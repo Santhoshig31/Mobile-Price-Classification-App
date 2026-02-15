@@ -21,7 +21,7 @@ from sklearn.metrics import (
 # 1. Basic Page Configuration
 st.set_page_config(page_title="Mobile Price App", layout="wide")
 st.title("📱 Mobile Price Classification")
-st.markdown("### ML Assignment 2")
+st.markdown("### M.Tech(AI/ML) Assignment 2")
 st.markdown("---")
 
 # 2. Sidebar for Cleaner UI
