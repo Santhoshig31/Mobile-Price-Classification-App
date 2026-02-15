@@ -12,111 +12,87 @@ import pandas as pd
 import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, matthews_corrcoef
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, matthews_corrcoef, roc_auc_score
 
-# Page Configuration
-st.set_page_config(page_title="Mobile Price Classification", layout="wide")
+# 1. Page Setup
+st.set_page_config(page_title="Mobile Price App", page_icon="📱", layout="wide")
+st.title("📱 Mobile Price Classification")
 
-# Title and Description
-st.title("📱 Mobile Price Classification App")
-st.markdown("""
-This app predicts the price range of a mobile phone based on its specifications.
-**Built for BITS Pilani M.Tech AI/ML Assignment 2.**
-""")
+# 2. Sidebar: Model Selection & Data Download
+st.sidebar.header("Configuration")
+model_name = st.sidebar.selectbox("Select Model", ["Logistic Regression", "Decision Tree", "KNN", "Naive Bayes", "Random Forest", "XGBoost"])
 
-# Sidebar for Model Selection
-st.sidebar.header("Model Configuration")
-model_options = [
-    "Logistic Regression",
-    "Decision Tree",
-    "KNN",
-    "Naive Bayes",
-    "Random Forest",
-    "XGBoost"
-]
-selected_model_name = st.sidebar.selectbox("Select ML Model", model_options)
+# Try to provide the Test Data for download
+try:
+    with open("test_data.csv", "rb") as file:
+        st.sidebar.download_button("📥 Download Test Data", file, "test_data.csv", "text/csv")
+except FileNotFoundError:
+    st.sidebar.warning("test_data.csv not found on server.")
 
-# Load the selected model and scaler
+# 3. Load Model & Scaler
 @st.cache_resource
-def load_resources(model_name):
-    try:
-        # Load Scaler
-        scaler = joblib.load('models/scaler.pkl')
+def load_model(name):
+    scaler = joblib.load('models/scaler.pkl')
+    model = joblib.load(f"models/{name.replace(' ', '_').lower()}.pkl")
+    return model, scaler
 
-        # Load Model
-        filename = f"models/{model_name.replace(' ', '_').lower()}.pkl"
-        model = joblib.load(filename)
-        return model, scaler
-    except FileNotFoundError:
-        st.error(f"Error: Model file '{filename}' or 'scaler.pkl' not found. Please ensure the 'models' folder is uploaded.")
-        return None, None
+try:
+    model, scaler = load_model(model_name)
+except:
+    st.error("Error: Models not found. Please upload 'models/' folder to GitHub.")
+    st.stop()
 
-model, scaler = load_resources(selected_model_name)
+# 4. Main App: Upload & Predict
+uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 
-# Dataset Upload
-st.header("1. Upload Test Dataset")
-uploaded_file = st.file_uploader("Upload your CSV file (must contain mobile specs)", type=["csv"])
-
-if uploaded_file is not None and model is not None:
-    # Read CSV
+if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
-    st.write("### Data Preview")
-    st.dataframe(df.head())
 
     # Preprocessing
-    # We assume the uploaded file has the same columns as training data
-    # Drop 'price_range' if it exists (Ground Truth) for prediction
-    if 'price_range' in df.columns:
-        X_test = df.drop('price_range', axis=1)
-        y_true = df['price_range']
-    else:
-        X_test = df
-        y_true = None
+    X_test = df.drop('price_range', axis=1) if 'price_range' in df.columns else df
+    y_true = df['price_range'] if 'price_range' in df.columns else None
 
-    # Scale data if needed (Logistic Regression & KNN used scaling)
-    if selected_model_name in ["Logistic Regression", "KNN"]:
-        try:
-            X_test_processed = scaler.transform(X_test)
-        except Exception as e:
-            st.error(f"Error in data scaling: {e}")
-            st.stop()
-    else:
-        X_test_processed = X_test
+    # Scale Data if needed (Logistic/KNN)
+    if model_name in ["Logistic Regression", "KNN"]:
+        X_test = scaler.transform(X_test)
 
-    # Button to Predict
-    if st.button("Run Prediction"):
-        prediction = model.predict(X_test_processed)
-        df['Predicted_Price_Range'] = prediction
+    # Predict
+    y_pred = model.predict(X_test)
+    y_prob = model.predict_proba(X_test) # Required for AUC
 
-        st.write("### Prediction Results")
-        st.dataframe(df[['Predicted_Price_Range']].head())
+    # 5. Display Results
+    st.subheader(f"Results for {model_name}")
 
-        # Display Metrics if Ground Truth is available
-        if y_true is not None:
-            st.header("2. Evaluation Metrics")
+    if y_true is not None:
+        # Calculate Metrics
+        acc = accuracy_score(y_true, y_pred)
+        auc = roc_auc_score(y_true, y_prob, multi_class='ovr')
+        prec = precision_score(y_true, y_pred, average='weighted')
+        rec = recall_score(y_true, y_pred, average='weighted')
+        f1 = f1_score(y_true, y_pred, average='weighted')
+        mcc = matthews_corrcoef(y_true, y_pred)
 
-            col1, col2, col3 = st.columns(3)
-            col4, col5 = st.columns(2)
+        # Show Metrics in Columns (Clean Layout)
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        col1.metric("Accuracy", f"{acc:.2f}")
+        col2.metric("AUC", f"{auc:.2f}")
+        col3.metric("Precision", f"{prec:.2f}")
+        col4.metric("Recall", f"{rec:.2f}")
+        col5.metric("F1 Score", f"{f1:.2f}")
+        col6.metric("MCC", f"{mcc:.2f}")
 
-            acc = accuracy_score(y_true, prediction)
-            prec = precision_score(y_true, prediction, average='weighted')
-            rec = recall_score(y_true, prediction, average='weighted')
-            f1 = f1_score(y_true, prediction, average='weighted')
-            mcc = matthews_corrcoef(y_true, prediction)
-
-            col1.metric("Accuracy", f"{acc:.2f}")
-            col2.metric("Precision", f"{prec:.2f}")
-            col3.metric("Recall", f"{rec:.2f}")
-            col4.metric("F1 Score", f"{f1:.2f}")
-            col5.metric("MCC Score", f"{mcc:.2f}")
-
-            # Confusion Matrix
-            st.header("3. Confusion Matrix")
-            cm = confusion_matrix(y_true, prediction)
-            fig, ax = plt.subplots()
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-            plt.xlabel('Predicted')
-            plt.ylabel('Actual')
+        # Confusion Matrix
+        col_graph, col_text = st.columns([1, 2])
+        with col_graph:
+            st.write("##### Confusion Matrix")
+            cm = confusion_matrix(y_true, y_pred)
+            fig, ax = plt.subplots(figsize=(3, 3))
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
             st.pyplot(fig)
-        else:
-            st.warning("Ground truth ('price_range') not found in CSV. Metrics cannot be calculated.")
+    else:
+        st.success("Predictions generated successfully!")
+
+    # Show Data
+    st.write("##### Prediction Data")
+    df['Predicted_Price'] = y_pred
+    st.dataframe(df.head())
