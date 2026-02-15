@@ -14,30 +14,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, matthews_corrcoef, roc_auc_score
 
-# ==========================================
 # 1. Page Configuration
-# ==========================================
-st.set_page_config(
-    page_title="Mobile Price Classification",
-    page_icon="📱",
-    layout="wide"
-)
+st.set_page_config(page_title="Mobile Price Classification", page_icon="📱", layout="wide")
+st.title("📱 Mobile Price Classification App")
 
-# Title and Sub-header
-st.title("📱 Mobile Price Classification System")
-st.markdown("### BITS Pilani M.Tech Assignment 2 | Machine Learning Deployment")
-st.markdown("---")
-
-# ==========================================
-# 2. Sidebar: Configuration
-# ==========================================
-st.sidebar.header("⚙️ Configuration")
-
-# Model Selection
-model_name = st.sidebar.selectbox(
-    "Select Model",
-    ["Logistic Regression", "Decision Tree", "KNN", "Naive Bayes", "Random Forest", "XGBoost"]
-)
+# 2. Sidebar: Model Selection & Download
+st.sidebar.header("Configuration")
+model_name = st.sidebar.selectbox("Select Model", ["Logistic Regression", "Decision Tree", "KNN", "Naive Bayes", "Random Forest", "XGBoost"])
 
 # Load Resources
 @st.cache_resource
@@ -52,31 +35,28 @@ def load_resources(name):
 model, scaler = load_resources(model_name)
 
 if model is None:
-    st.error("❌ Error: Models not found. Please upload the 'models' folder to GitHub.")
+    st.error("Error: Models not found. Please upload 'models/' folder to GitHub.")
     st.stop()
 
-# Download Button Logic
+# Download Button for Test Data
 st.sidebar.markdown("---")
-st.sidebar.info("Tip: Download sample data to test the app.")
 try:
     with open("test_data.csv", "rb") as file:
-        st.sidebar.download_button(
-            label="📥 Download Test Data",
-            data=file,
-            file_name="test_data.csv",
-            mime="text/csv"
-        )
+        st.sidebar.download_button("📥 Download Test Data", file, "test_data.csv", "text/csv")
 except FileNotFoundError:
-    st.sidebar.warning("⚠️ test_data.csv not found.")
+    st.sidebar.warning("test_data.csv not found.")
 
-# ==========================================
-# 3. Main Interface
-# ==========================================
-uploaded_file = st.file_uploader("📂 Upload your CSV file here", type=["csv"])
+# 3. Main App: Upload
+uploaded_file = st.file_uploader("Upload your CSV file (test_data.csv)", type=["csv"])
 
 if uploaded_file is not None:
     # Read Data
     df = pd.read_csv(uploaded_file)
+    
+    # --- TABLE 1: INPUT DATA PREVIEW ---
+    st.subheader("1. Input Data Preview")
+    st.write("This is the data you uploaded, before prediction:")
+    st.dataframe(df.head())
 
     # Preprocessing
     if 'price_range' in df.columns:
@@ -86,23 +66,20 @@ if uploaded_file is not None:
         X_test = df
         y_true = None
 
-    # Scale if needed
+    # Scale Data (Only for LogReg/KNN)
     if model_name in ["Logistic Regression", "KNN"]:
-        X_test_scaled = scaler.transform(X_test)
+        X_test_processed = scaler.transform(X_test)
     else:
-        X_test_scaled = X_test
+        X_test_processed = X_test
 
     # Predict
-    y_pred = model.predict(X_test_scaled)
-    y_prob = model.predict_proba(X_test_scaled)
+    y_pred = model.predict(X_test_processed)
+    y_prob = model.predict_proba(X_test_processed) # For AUC
 
-    # --- RESULTS SECTION ---
-    st.success(f"✅ Prediction Complete using {model_name}")
-
+    # Display Metrics if Ground Truth exists
     if y_true is not None:
-        # 1. Metrics Dashboard
-        st.subheader("📊 Performance Metrics")
-
+        st.subheader("2. Evaluation Metrics")
+        
         # Calculate Metrics
         acc = accuracy_score(y_true, y_pred)
         auc = roc_auc_score(y_true, y_prob, multi_class='ovr')
@@ -111,51 +88,32 @@ if uploaded_file is not None:
         f1 = f1_score(y_true, y_pred, average='weighted')
         mcc = matthews_corrcoef(y_true, y_pred)
 
-        # Row 1
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Accuracy", f"{acc:.2%}", delta_color="normal")
-        col2.metric("AUC Score", f"{auc:.3f}")
-        col3.metric("MCC Score", f"{mcc:.3f}")
+        # Display Metrics in Columns
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        col1.metric("Accuracy", f"{acc:.2f}")
+        col2.metric("AUC", f"{auc:.2f}")
+        col3.metric("Precision", f"{prec:.2f}")
+        col4.metric("Recall", f"{rec:.2f}")
+        col5.metric("F1 Score", f"{f1:.2f}")
+        col6.metric("MCC", f"{mcc:.2f}")
 
-        # Row 2
-        col4, col5, col6 = st.columns(3)
-        col4.metric("Precision", f"{prec:.3f}")
-        col5.metric("Recall", f"{rec:.3f}")
-        col6.metric("F1 Score", f"{f1:.3f}")
-
-        st.markdown("---")
-
-        # 2. Visualizations (Confusion Matrix + Class Distribution)
-        col_viz1, col_viz2 = st.columns(2)
-
-        with col_viz1:
-            st.subheader("Confusion Matrix")
+        # Confusion Matrix
+        st.subheader("3. Confusion Matrix")
+        col_fig, col_text = st.columns([1, 2])
+        with col_fig:
             cm = confusion_matrix(y_true, y_pred)
-            fig, ax = plt.subplots()
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-            plt.ylabel('Actual Class')
-            plt.xlabel('Predicted Class')
+            fig, ax = plt.subplots(figsize=(4, 3))
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+            plt.xlabel('Predicted')
+            plt.ylabel('Actual')
             st.pyplot(fig)
 
-        with col_viz2:
-            st.subheader("Prediction Distribution")
-            # Create a simple bar chart of predicted classes
-            pred_counts = pd.Series(y_pred).value_counts().sort_index()
-            st.bar_chart(pred_counts)
-            st.caption("Count of phones predicted in each price range (0-3).")
-
-    # 3. Data Table
-    st.markdown("---")
-    st.subheader("📋 Detailed Prediction Data")
-
+    # --- TABLE 2: PREDICTION RESULTS ---
+    st.subheader("4. Prediction Results")
+    st.write("This table contains the model's predictions in the first column:")
+    
+    # Create a copy to show predictions
     results_df = df.copy()
-    results_df['Predicted_Price_Range'] = y_pred
-
-    # Highlight the predicted column by moving it to the front
-    cols = ['Predicted_Price_Range'] + [col for col in results_df.columns if col != 'Predicted_Price_Range']
-    results_df = results_df[cols]
-
-    st.dataframe(results_df, use_container_width=True)
-
-elif uploaded_file is None:
-    st.info("👈 Please upload a CSV file to generate predictions.")
+    results_df.insert(0, 'Predicted_Price_Range', y_pred)
+    
+    st.dataframe(results_df.head())
