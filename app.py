@@ -87,8 +87,7 @@ if uploaded_file is not None and model is not None:
         c5.metric("F1 Score", f"{f1_score(y_true, y_pred, average='weighted'):.2f}")
         c6.metric("MCC", f"{matthews_corrcoef(y_true, y_pred):.2f}")
 
-        st.markdown("
-", unsafe_allow_html=True)
+        st.markdown(" ", unsafe_allow_html=True)
 
         # --- B. TABS FOR DETAILED REPORTS ---
         # Create tabs
