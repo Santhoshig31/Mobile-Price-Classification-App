@@ -95,7 +95,17 @@ if uploaded_file is not None and model is not None:
 
         # TAB 1: Classification Report
         with tab1:
-            st.write("#### Classification Report")
+             st.write("#### Confusion Matrix")
+            # Increased figure size since it now has full width
+            fig, ax = plt.subplots(figsize=(8, 4))
+            sns.heatmap(confusion_matrix(y_true, y_pred), annot=True, fmt='d', cmap='Blues', cbar=True)
+            plt.xlabel('Predicted Label')
+            plt.ylabel('True Label')
+            st.pyplot(fig)
+            
+        # TAB 2: Confusion Matrix
+        with tab2:
+           st.write("#### Classification Report")
             report_dict = classification_report(y_true, y_pred, output_dict=True)
             report_df = pd.DataFrame(report_dict).transpose()
 
@@ -105,16 +115,6 @@ if uploaded_file is not None and model is not None:
                 use_container_width=True,
                 height=400
             )
-
-        # TAB 2: Confusion Matrix
-        with tab2:
-            st.write("#### Confusion Matrix")
-            # Increased figure size since it now has full width
-            fig, ax = plt.subplots(figsize=(8, 4))
-            sns.heatmap(confusion_matrix(y_true, y_pred), annot=True, fmt='d', cmap='Blues', cbar=True)
-            plt.xlabel('Predicted Label')
-            plt.ylabel('True Label')
-            st.pyplot(fig)
 
     # --- C. PREDICTION RESULTS ---
     st.markdown("---")
