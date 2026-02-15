@@ -31,14 +31,10 @@ model_name = st.sidebar.selectbox("Select Model", ["Logistic Regression", "Decis
 @st.cache_resource
 def load_model_resources(name):
     try:
-        # Ensure your model file names match this pattern exactly
         model = joblib.load(f"models/{name.replace(' ', '_').lower()}.pkl")
         scaler = joblib.load('models/scaler.pkl')
         return model, scaler
-    except FileNotFoundError:
-        return None, None
-    except Exception as e:
-        st.error(f"Error loading resources: {e}")
+    except:
         return None, None
 
 model, scaler = load_model_resources(model_name)
@@ -48,7 +44,7 @@ try:
     with open("test_data.csv", "rb") as f:
         st.sidebar.download_button("📥 Download Test Data", f, "test_data.csv")
 except:
-    st.sidebar.warning("test_data.csv not found (for download button)")
+    pass
 
 # 3. Main App logic
 uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
@@ -56,18 +52,17 @@ uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 if uploaded_file is not None and model is not None:
     df = pd.read_csv(uploaded_file)
 
-    # --- TABLE 1: INITIAL INPUT DATA ---
+    # --- TABLE 1: INPUT DATA ---
     st.subheader("1. Input Data Preview")
-    st.dataframe(df.head())
+    st.dataframe(df.head(), use_container_width=True)
 
     # Preprocessing
     X = df.drop('price_range', axis=1) if 'price_range' in df.columns else df
     y_true = df['price_range'] if 'price_range' in df.columns else None
 
     # Prediction
-    # Apply scaler only if the model requires it
     if model_name in ["Logistic Regression", "KNN"]:
-        X_input = scaler.transform(X) 
+        X_input = scaler.transform(X)
     else:
         X_input = X
 
@@ -87,64 +82,48 @@ if uploaded_file is not None and model is not None:
             c2.metric("AUC", f"{auc:.2f}")
         except:
             c2.metric("AUC", "N/A")
-
         c3.metric("Precision", f"{precision_score(y_true, y_pred, average='weighted'):.2f}")
         c4.metric("Recall", f"{recall_score(y_true, y_pred, average='weighted'):.2f}")
         c5.metric("F1 Score", f"{f1_score(y_true, y_pred, average='weighted'):.2f}")
         c6.metric("MCC", f"{matthews_corrcoef(y_true, y_pred):.2f}")
 
-        st.markdown(" ", unsafe_allow_html=True) # Spacer
+        st.markdown("
+", unsafe_allow_html=True)
 
-        # --- B. DETAILED REPORTS (Split into 2 Columns) ---
-        col_report, col_viz = st.columns([1.5, 1])
+        # --- B. TABS FOR DETAILED REPORTS ---
+        # Create tabs
+        tab1, tab2 = st.tabs(["📋 Classification Report", "🔍 Confusion Matrix"])
 
-        with col_report:
-            st.write("#### 📋 Classification Report")
-            # Generate report as a dictionary, then convert to DataFrame
+        # TAB 1: Classification Report
+        with tab1:
+            st.write("#### Classification Report")
             report_dict = classification_report(y_true, y_pred, output_dict=True)
             report_df = pd.DataFrame(report_dict).transpose()
 
-            # Styling: Highlight high scores in green
+            # Full width dataframe with highlighting
             st.dataframe(
-                report_df.style.background_gradient(cmap='Greens', subset=['f1-score', 'recall', 'precision']),
-                use_container_width=True
+                report_df.style.background_gradient(cmap='Greens', subset=['f1-score', 'recall', 'precision']).format("{:.2f}"),
+                use_container_width=True,
+                height=400
             )
 
-        with col_viz:
-            st.write("#### 🔍 Confusion Matrix")
-            fig, ax = plt.subplots(figsize=(4, 3))
-            sns.heatmap(confusion_matrix(y_true, y_pred), annot=True, fmt='d', cmap='Blues', cbar=False)
-            plt.xlabel('Predicted')
-            plt.ylabel('Actual')
+        # TAB 2: Confusion Matrix
+        with tab2:
+            st.write("#### Confusion Matrix")
+            # Increased figure size since it now has full width
+            fig, ax = plt.subplots(figsize=(8, 4))
+            sns.heatmap(confusion_matrix(y_true, y_pred), annot=True, fmt='d', cmap='Blues', cbar=True)
+            plt.xlabel('Predicted Label')
+            plt.ylabel('True Label')
             st.pyplot(fig)
 
-    # --- C. PREDICTION DISTRIBUTION ---
+    # --- C. PREDICTION RESULTS ---
     st.markdown("---")
     st.subheader("3. Prediction Insights")
 
-    col_dist, col_res = st.columns([1, 2])
-
-    with col_dist:
-        st.write("#### Class Distribution")
-        # Visualizing the count of predicted classes
-        pred_counts = pd.Series(y_pred).value_counts().sort_index()
-        fig2, ax2 = plt.subplots(figsize=(4, 3))
-        sns.barplot(x=pred_counts.index, y=pred_counts.values, palette="viridis", ax=ax2)
-        ax2.set_title("Count of Predictions per Price Range")
-        ax2.set_xlabel("Price Range")
-        ax2.set_ylabel("Count")
-        st.pyplot(fig2)
-
-    with col_res:
-        st.write("#### Final Prediction Data")
-        res_df = df.copy()
-        res_df.insert(0, 'Predicted_Range', y_pred)
-
-        # Color the prediction column for visibility
-        def highlight_pred(s):
-            return ['background-color: #d1ecf1'] * len(s) if s.name == 'Predicted_Range' else [''] * len(s)
-
-        st.dataframe(res_df.head(10).style.apply(highlight_pred, axis=0), use_container_width=True)
+    res_df = df.copy()
+    res_df.insert(0, 'Predicted_Range', y_pred)
+    st.dataframe(res_df.head(), use_container_width=True)
 
 elif model is None:
-    st.error("⚠️ Model files missing! Please ensure `.pkl` files are in the `models/` folder.")
+    st.error("Model files missing in 'models/' folder.")
