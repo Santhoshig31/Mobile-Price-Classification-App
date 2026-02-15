@@ -12,22 +12,31 @@ import pandas as pd
 import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.express as px  # Added for better visuals
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, 
     confusion_matrix, matthews_corrcoef, roc_auc_score, 
     classification_report
 )
 
-# 1. Basic Page Configuration
-st.set_page_config(page_title="Mobile Price App", layout="wide")
-st.title("📱 Mobile Price Classification")
+# 1. Page Configuration
+st.set_page_config(page_title="Mobile Price Analytics", layout="wide", initial_sidebar_state="expanded")
+
+# Custom CSS for a modern look
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("📱 Mobile Price Classification Intelligence")
 st.markdown("---")
 
-# 2. Sidebar for Cleaner UI
-st.sidebar.header("Settings")
+# 2. Sidebar with enhanced info
+st.sidebar.header("🕹️ Control Panel")
 model_name = st.sidebar.selectbox("Select Model", ["Logistic Regression", "Decision Tree", "KNN", "Naive Bayes", "Random Forest", "XGBoost"])
 
-# Load Scaler and Model
 @st.cache_resource
 def load_model_resources(name):
     try:
@@ -39,47 +48,39 @@ def load_model_resources(name):
 
 model, scaler = load_model_resources(model_name)
 
-# Download Button in Sidebar
+# Sidebar Download & Info
+st.sidebar.markdown("---")
 try:
     with open("test_data.csv", "rb") as f:
-        st.sidebar.download_button("📥 Download Test Data", f, "test_data.csv")
+        st.sidebar.download_button("📥 Download Sample Data", f, "test_data.csv")
 except:
     pass
 
-# 3. Main App logic
-uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+st.sidebar.info(f"**Current Model:** {model_name}\n\nThis app predicts price range (0-3) based on hardware specs.")
+
+# 3. Main Logic
+uploaded_file = st.file_uploader("📂 Upload Mobile Dataset (CSV)", type=["csv"])
 
 if uploaded_file is not None and model is not None:
     df = pd.read_csv(uploaded_file)
-
-    # --- TABLE 1: INPUT DATA ---
-    st.subheader("1. Input Data Preview")
-    st.dataframe(df.head(), use_container_width=True)
-
+    
     # Preprocessing
     X = df.drop('price_range', axis=1) if 'price_range' in df.columns else df
     y_true = df['price_range'] if 'price_range' in df.columns else None
 
-    # Prediction
-    if model_name in ["Logistic Regression", "KNN"]:
-        X_input = scaler.transform(X)
-    else:
-        X_input = X
-
+    # Prediction Logic
+    X_input = scaler.transform(X) if model_name in ["Logistic Regression", "KNN"] else X
     y_pred = model.predict(X_input)
     y_prob = model.predict_proba(X_input)
 
-    # 4. Evaluation Metrics Section
+    # --- SECTION 1: DASHBOARD ---
+    st.subheader("🚀 Performance Dashboard")
     if y_true is not None:
-        st.markdown("---")
-        st.subheader("2. Model Evaluation")
-
-        # --- A. TOP ROW METRICS ---
         c1, c2, c3, c4, c5, c6 = st.columns(6)
-        c1.metric("Accuracy", f"{accuracy_score(y_true, y_pred):.2f}")
+        c1.metric("Accuracy", f"{accuracy_score(y_true, y_pred):.2%}")
         try:
             auc = roc_auc_score(y_true, y_prob, multi_class='ovr')
-            c2.metric("AUC", f"{auc:.2f}")
+            c2.metric("AUC", f"{auc:.3f}")
         except:
             c2.metric("AUC", "N/A")
         c3.metric("Precision", f"{precision_score(y_true, y_pred, average='weighted'):.2f}")
@@ -87,42 +88,52 @@ if uploaded_file is not None and model is not None:
         c5.metric("F1 Score", f"{f1_score(y_true, y_pred, average='weighted'):.2f}")
         c6.metric("MCC", f"{matthews_corrcoef(y_true, y_pred):.2f}")
 
-        st.markdown(" ", unsafe_allow_html=True)
+    # --- SECTION 2: TABS ---
+    st.markdown("---")
+    tab1, tab2, tab3 = st.tabs(["🔍 Confusion Analysis", "📋 Report Details", "📈 Prediction Distribution"])
 
-        # --- B. TABS FOR DETAILED REPORTS ---
-        # Create tabs
-        tab1, tab2 = st.tabs(["📋 Classification Report", "🔍 Confusion Matrix"])
-
-        # TAB 1: Classification Report
-        with tab1:
-             st.write("#### Confusion Matrix")
-            # Increased figure size since it now has full width
+    with tab1:
+        st.write("#### Confusion Matrix Interpretation")
+        col_cm1, col_cm2 = st.columns([2, 1])
+        with col_cm1:
             fig, ax = plt.subplots(figsize=(8, 4))
-            sns.heatmap(confusion_matrix(y_true, y_pred), annot=True, fmt='d', cmap='Blues', cbar=True)
+            sns.heatmap(confusion_matrix(y_true, y_pred), annot=True, fmt='d', cmap='Blues')
             plt.xlabel('Predicted Label')
             plt.ylabel('True Label')
             st.pyplot(fig)
-            
-        # TAB 2: Confusion Matrix
-        with tab2:
-           st.write("#### Classification Report")
-            report_dict = classification_report(y_true, y_pred, output_dict=True)
-            report_df = pd.DataFrame(report_dict).transpose()
+        with col_cm2:
+            st.write("**Quick Guide:**")
+            st.caption("Diagonal elements represent correct predictions.")
+            st.caption("Off-diagonal elements show where the model is confusing classes.")
 
-            # Full width dataframe with highlighting
-            st.dataframe(
-                report_df.style.background_gradient(cmap='Greens', subset=['f1-score', 'recall', 'precision']).format("{:.2f}"),
-                use_container_width=True,
-                height=400
-            )
+    with tab2:
+        st.write("#### Detailed Classification Metrics")
+        report_dict = classification_report(y_true, y_pred, output_dict=True)
+        report_df = pd.DataFrame(report_dict).transpose()
+        st.dataframe(report_df.style.background_gradient(cmap='RdYlGn').format("{:.2f}"), use_container_width=True)
 
-    # --- C. PREDICTION RESULTS ---
+    with tab3:
+        st.write("#### Forecast Distribution")
+        res_summary = pd.DataFrame({'Class': y_pred}).value_counts().reset_index()
+        res_summary.columns = ['Price Range', 'Count']
+        fig_pie = px.pie(res_summary, values='Count', names='Price Range', hole=0.4, 
+                         color_discrete_sequence=px.colors.sequential.RdBu)
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    # --- SECTION 3: DATA INSIGHTS ---
     st.markdown("---")
-    st.subheader("3. Prediction Insights")
-
+    st.subheader("📋 Prediction Insights")
+    
+    # Filter functionality for better UI
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        search_val = st.multiselect("Filter by Predicted Price Range", options=[0,1,2,3], default=[0,1,2,3])
+    
     res_df = df.copy()
     res_df.insert(0, 'Predicted_Range', y_pred)
-    st.dataframe(res_df.head(), use_container_width=True)
+    filtered_df = res_df[res_df['Predicted_Range'].isin(search_val)]
+    
+    st.dataframe(filtered_df, use_container_width=True)
 
 elif model is None:
-    st.error("Model files missing in 'models/' folder.")
+    st.error("Model files missing. Please check the 'models/' folder.")
