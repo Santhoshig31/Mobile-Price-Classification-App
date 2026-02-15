@@ -14,106 +14,79 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, matthews_corrcoef, roc_auc_score
 
-# 1. Page Configuration
-st.set_page_config(page_title="Mobile Price Classification", page_icon="📱", layout="wide")
-st.title("📱 Mobile Price Classification App")
+# 1. Basic Page Configuration
+st.set_page_config(page_title="Mobile Price App", layout="wide")
+st.title("📱 Mobile Price Classification")
+st.markdown("---")
 
-# 2. Sidebar: Model Selection & Download
-st.sidebar.header("Configuration")
+# 2. Sidebar for Cleaner UI
+st.sidebar.header("Settings")
 model_name = st.sidebar.selectbox("Select Model", ["Logistic Regression", "Decision Tree", "KNN", "Naive Bayes", "Random Forest", "XGBoost"])
 
-# Load Resources
+# Load Scaler and Model
 @st.cache_resource
-def load_resources(name):
+def load_model_resources(name):
     try:
-        scaler = joblib.load('models/scaler.pkl')
         model = joblib.load(f"models/{name.replace(' ', '_').lower()}.pkl")
+        scaler = joblib.load('models/scaler.pkl')
         return model, scaler
     except:
         return None, None
 
-model, scaler = load_resources(model_name)
+model, scaler = load_model_resources(model_name)
 
-if model is None:
-    st.error("Error: Models not found. Please upload 'models/' folder to GitHub.")
-    st.stop()
-
-# Download Button for Test Data
-st.sidebar.markdown("---")
+# Download Button in Sidebar
 try:
-    with open("test_data.csv", "rb") as file:
-        st.sidebar.download_button("📥 Download Test Data", file, "test_data.csv", "text/csv")
-except FileNotFoundError:
-    st.sidebar.warning("test_data.csv not found.")
+    with open("test_data.csv", "rb") as f:
+        st.sidebar.download_button("📥 Download Test Data", f, "test_data.csv")
+except:
+    st.sidebar.warning("test_data.csv not found")
 
-# 3. Main App: Upload
-uploaded_file = st.file_uploader("Upload your CSV file (test_data.csv)", type=["csv"])
+# 3. Main App logic
+uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 
-if uploaded_file is not None:
-    # Read Data
+if uploaded_file is not None and model is not None:
     df = pd.read_csv(uploaded_file)
     
-    # --- TABLE 1: INPUT DATA PREVIEW ---
+    # --- TABLE 1: INITIAL INPUT DATA ---
     st.subheader("1. Input Data Preview")
-    st.write("This is the data you uploaded, before prediction:")
     st.dataframe(df.head())
 
     # Preprocessing
-    if 'price_range' in df.columns:
-        X_test = df.drop('price_range', axis=1)
-        y_true = df['price_range']
-    else:
-        X_test = df
-        y_true = None
+    X = df.drop('price_range', axis=1) if 'price_range' in df.columns else df
+    y_true = df['price_range'] if 'price_range' in df.columns else None
 
-    # Scale Data (Only for LogReg/KNN)
-    if model_name in ["Logistic Regression", "KNN"]:
-        X_test_processed = scaler.transform(X_test)
-    else:
-        X_test_processed = X_test
+    # Prediction
+    X_input = scaler.transform(X) if model_name in ["Logistic Regression", "KNN"] else X
+    y_pred = model.predict(X_input)
+    y_prob = model.predict_proba(X_input)
 
-    # Predict
-    y_pred = model.predict(X_test_processed)
-    y_prob = model.predict_proba(X_test_processed) # For AUC
-
-    # Display Metrics if Ground Truth exists
+    # 4. Evaluation Metrics Section
     if y_true is not None:
-        st.subheader("2. Evaluation Metrics")
+        st.markdown("---")
+        st.subheader("2. Model Metrics")
         
-        # Calculate Metrics
-        acc = accuracy_score(y_true, y_pred)
-        auc = roc_auc_score(y_true, y_prob, multi_class='ovr')
-        prec = precision_score(y_true, y_pred, average='weighted')
-        rec = recall_score(y_true, y_pred, average='weighted')
-        f1 = f1_score(y_true, y_pred, average='weighted')
-        mcc = matthews_corrcoef(y_true, y_pred)
+        # Displaying 6 metrics in a single row for a clean UI
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1.metric("Accuracy", f"{accuracy_score(y_true, y_pred):.2f}")
+        c2.metric("AUC", f"{roc_auc_score(y_true, y_prob, multi_class='ovr'):.2f}")
+        c3.metric("Precision", f"{precision_score(y_true, y_pred, average='weighted'):.2f}")
+        c4.metric("Recall", f"{recall_score(y_true, y_pred, average='weighted'):.2f}")
+        c5.metric("F1 Score", f"{f1_score(y_true, y_pred, average='weighted'):.2f}")
+        c6.metric("MCC", f"{matthews_corrcoef(y_true, y_pred):.2f}")
 
-        # Display Metrics in Columns
-        col1, col2, col3, col4, col5, col6 = st.columns(6)
-        col1.metric("Accuracy", f"{acc:.2f}")
-        col2.metric("AUC", f"{auc:.2f}")
-        col3.metric("Precision", f"{prec:.2f}")
-        col4.metric("Recall", f"{rec:.2f}")
-        col5.metric("F1 Score", f"{f1:.2f}")
-        col6.metric("MCC", f"{mcc:.2f}")
+        # Confusion Matrix Visual
+        st.write("#### Confusion Matrix")
+        fig, ax = plt.subplots(figsize=(5, 3))
+        sns.heatmap(confusion_matrix(y_true, y_pred), annot=True, fmt='d', cmap='Blues', cbar=False)
+        st.pyplot(fig)
 
-        # Confusion Matrix
-        st.subheader("3. Confusion Matrix")
-        col_fig, col_text = st.columns([1, 2])
-        with col_fig:
-            cm = confusion_matrix(y_true, y_pred)
-            fig, ax = plt.subplots(figsize=(4, 3))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
-            plt.xlabel('Predicted')
-            plt.ylabel('Actual')
-            st.pyplot(fig)
+    # --- TABLE 2: FINAL PREDICTION RESULTS ---
+    st.markdown("---")
+    st.subheader("3. Prediction Results")
+    res_df = df.copy()
+    res_df.insert(0, 'Predicted_Range', y_pred)
+    st.dataframe(res_df.head())
 
-    # --- TABLE 2: PREDICTION RESULTS ---
-    st.subheader("4. Prediction Results")
-    st.write("This table contains the model's predictions in the first column:")
-    
-    # Create a copy to show predictions
-    results_df = df.copy()
-    results_df.insert(0, 'Predicted_Price_Range', y_pred)
-    
-    st.dataframe(results_df.head())
+elif model is None:
+    st.error("Model files missing in 'models/' folder.")
